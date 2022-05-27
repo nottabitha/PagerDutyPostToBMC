@@ -41,7 +41,7 @@ resource "azurerm_storage_account" "wmsrepagerdutyreqsa" {
 
 # Create service plan
 
-resource "azurerm_service_plan" "wmsre-pagerduty-req-asp" {
+resource "azurerm_app_service_plan" "wmsre-pagerduty-req-asp" {
 
   name                = "azure-pagerduty-req-asp"
 
@@ -49,39 +49,33 @@ resource "azurerm_service_plan" "wmsre-pagerduty-req-asp" {
 
   resource_group_name = azurerm_resource_group.wmsre-pagerduty-req-rg.name
 
-  os_type = "Linux"
-
-  sku_name = "Y1"
+  sku {
+    tier = "Standard"
+    size = "S1"
+  }
 }
 
 # Create function app
 
 module "pagerduty-req-func" {
   source = "github.com/AGLEnergy/redstone.git//modules/func-app"
-  name                       = "pagerduty-req-func"
+  name                       = "pagerduty-req"
   include_default_webjob_settings = true
-  # ask about this vv
   action_group_id                 = azurerm_application_insights.pagerduty-req-appinsights.id
-  application_log_alert_rules = null
-  # ask about this vv
+  application_log_alert_rules = {}
   allowed_ips = []
-  dynamic_metric_alert_rules = null
+  dynamic_metric_alert_rules = {}
   application_insights_id         = azurerm_application_insights.pagerduty-req-appinsights.id
-  # ask about this vv
   allowed_audiences = []
-  static_metric_alert_rules = null
-   # ask about this vv
+  static_metric_alert_rules = {}
   allowed_subnets = []
-  # storage_account_name       = azurerm_storage_account.wmsrepagerdutyreqsa.name
-
-  # storage_account_access_key = azurerm_storage_account.wmsrepagerdutyreqsa.primary_access_key
   
   resource_group_name        = azurerm_resource_group.wmsre-pagerduty-req-rg.name
-  app_service_plan_id         = azurerm_service_plan.wmsre-pagerduty-req-asp.id
+  app_service_plan_id         = azurerm_app_service_plan.wmsre-pagerduty-req-asp.id
   location                   = azurerm_resource_group.wmsre-pagerduty-req-rg.location
   app_settings = {
-    bmcQaPassword = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/bmc-qa-password/db8c2c874d094aa48c65588dc46d1cb9)"
-    bmcQaUsername = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/bmc-qa-username/a36651e28df84fdfb4b317be4af3c96c)"
+  #   bmcQaPassword = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/bmc-qa-password/db8c2c874d094aa48c65588dc46d1cb9)"
+  #   bmcQaUsername = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/bmc-qa-username/a36651e28df84fdfb4b317be4af3c96c)"
   }
 }
 
@@ -104,7 +98,7 @@ module "bmc-qa-kv" {
   tenant_id               = data.azurerm_client_config.current.tenant_id
 }
 
-resource "azurerm_key_vault_access_policy" "bmc-qa-kv-ap" {
+resource "azurerm_key_vault_access_policy" "bmc-qa-kv-wholesale-sre-ap" {
   for_each = toset(local.authorised_users)
 
   key_vault_id        = module.bmc-qa-kv.id
@@ -144,10 +138,10 @@ resource "azurerm_key_vault_access_policy" "bmc-qa-kv-ap" {
   ]
 }
 
-resource "azurerm_key_vault_access_policy" "bmc-qa-kv-func-ap" {
+resource "azurerm_key_vault_access_policy" "bmc-qa-kv-pagerduty-req-func-app" {
   key_vault_id        = module.bmc-qa-kv.id
   tenant_id           = data.azurerm_client_config.current.tenant_id
-  object_id           = "be8b7b45-5162-457b-aff5-ed9f8ca8968c"
+  object_id           = module.pagerduty-req-func.main_principal_id
 
   key_permissions = [
     "Get",

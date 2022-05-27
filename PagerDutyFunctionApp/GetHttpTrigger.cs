@@ -11,6 +11,7 @@ using RestSharp;
 using RestSharp.Authenticators;
 using Azure.Security.KeyVault.Secrets;
 using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
 
 namespace PagerDutyFunctionApp
 { 
@@ -18,9 +19,7 @@ namespace PagerDutyFunctionApp
     {
         private string token { get; set; }
 
-        [FunctionName("GetAccessToken")]
-        public static string GetAccessTokenRun([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)]
-        HttpRequest req, ILogger log)
+        public static string GetAccessTokenRun(ILogger log)
         {
             log.LogInformation(Environment.GetEnvironmentVariable("bmcQaUsername"));
             
@@ -49,55 +48,36 @@ namespace PagerDutyFunctionApp
             }
         }
 
-        [FunctionName("PostDataToBmc")]
-        public static string PostDataToBmcRun([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)]
-        string token,HttpRequest req, ILogger log)
+        public static string PostDataToBmcRun(string token, string id, string name, string description, string urgency,
+            string incidentNo, ILogger log)
         {
-            string responseMessage = "Hi this worked";
             log.LogInformation("C# post data to bmc function processed a request.");
-
-            var json =
-                @"{
-                    " + "\n" +
-                @"""values"": {
-                    " + "\n" +
-                @"    ""Login_ID"": ""svc_ignio"",
-                    " + "\n" +
-                @"    ""First_Name"": ""svc"",
-                    " + "\n" +
-                @"    ""Last_Name"": ""ignio"",
-                    " + "\n" +
-                @"    ""Service_Type"": ""User Service Restoration"",
-                    " + "\n" +
-                @"    ""Urgency"": ""4-Low"",
-                    " + "\n" +
-                @"    ""Impact"": ""4-Minor/Localized"",
-                    " + "\n" +
-                @"    ""Description"": ""Incident Creation Test API"",
-                    " + "\n" +
-                @"    ""Detailed_Decription"": ""Test Test Test "",
-                    " + "\n" +
-                @"    ""Reported Source"": ""Phone"",
-                    " + "\n" +
-                @"    ""Assigned Support Company"": ""AGL"",
-                    " + "\n" +
-                @"    ""Assigned Support Organization"": ""AGL"",
-                    " + "\n" +
-                @"    ""Assigned Group"": ""APP_INTEGRATED_SRE""
-                    " + "\n" +
-                @"     }
-                    " + "\n" +
-                @"}";
 
             var request = new RestRequest("/api/arsys/v1/entry/HPD:IncidentInterface_Create/", Method.Post);
             var client = new RestClient("https://agl-qa-restapi.onbmc.com");
             request.AddHeader("Content-Type", "application/json");
             request.AddHeader("Accept", "application/json");
-            request.AddHeader("Authorization", token); 
-            request.AddStringBody(json, DataFormat.Json);
+            request.AddHeader("Authorization", token);
+            Incident incident = new Incident();
+            incident.LoginID = "svc_pagerduty";
+            incident.FirstName = "";
+            incident.LastName = "";
+            incident.ServiceType = "User Service Restoration";
+            incident.Urgency = urgency;
+            incident.Impact = "4-Minor/Localized";
+            incident.Description = $"Incident {incidentNo}";
+            incident.DetailedDescription = description;
+            incident.ReportedSource = "Phone";
+            incident.Assignee = name;
+            incident.AssignedSupportCompany = "AGL";
+            incident.AssignedSupportOrganization = "AGL";
+            incident.AssignedGroup = "APP_INTEGRATED_SRE";
+            //incident.Notes = notes;
 
+            request.AddStringBody(incident.ToJson(), DataFormat.Json);
+            
             var response = client.ExecutePostAsync(request).Result;
-            log.LogInformation(response.StatusCode.ToString());
+            log.LogInformation(response.Content);
             if (response.IsSuccessful)
             {
                 log.LogInformation(response.Content.ToString());
@@ -106,9 +86,7 @@ namespace PagerDutyFunctionApp
 
             return response.Content;
         }
-        [FunctionName("LogOut")]
-        public static void LogOutRun([HttpTrigger(AuthorizationLevel.Anonymous, "post", Route = null)]
-        string token, HttpRequest req, ILogger log)
+        public static void LogOutRun(string token, ILogger log)
         {
             log.LogInformation("Log Out Function.");
 
@@ -122,43 +100,32 @@ namespace PagerDutyFunctionApp
                 log.LogInformation("Successfully logged out!");
             }
         }
-        [FunctionName("GetHttpTrigger")]
-        public static async Task<IActionResult> GetHttpTriggerRun(
+
+        [FunctionName("SendRequest")]
+        public static async Task<IActionResult> SentRequestRun(
             [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = null)]HttpRequest req,
             ILogger log)
         {
             log.LogInformation("C# HTTP trigger function processed a request.");
 
-           
-
-            var callerGetAccessToken = GetAccessTokenRun(req, log).ToString();
-            var callerPostDataToBmc = PostDataToBmcRun(callerGetAccessToken, req, log);
-            LogOutRun(callerGetAccessToken, req, log);
-
-            string name = req.Query["name"];
-            string id = req.Query["id"];
-            string coordGroup = "APP_INTEGRATED SRE";
-            string title = req.Query["title"];
-            string category = req.Query["category"]; //
-            string urgency = req.Query["urgency"];
-            string status = req.Query["status"];
-            string manGroup = req.Query["manGroup"]; //
-            
 
             string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-            dynamic data = JsonConvert.DeserializeObject(requestBody);
-            name = name ?? data?.name;
-            id = id ?? data?.id;
-            coordGroup = coordGroup ?? data?.coordGroup;
-            title = title ?? data?.title;
-            category = category ?? data?.category;
-            urgency = urgency ?? data?.urgency;
-            status = status ?? data?.status;
-            manGroup = manGroup ?? data?.manGroup;
+            var data = JsonConvert.DeserializeObject<Rootobject>(requestBody);
+            string id = data.messages[0].incident.assignments[0].assignee.id;
+            string name = data.messages[0].incident.assignments[0].assignee.summary;
+            string description = data.messages[0].incident.description;
+            string urgency = data.messages[0].incident.urgency;
+            string incidentNo = data.messages[0].incident.incident_number.ToString();
+
+            var callerGetAccessToken = GetAccessTokenRun(log).ToString();
+            var callerPostDataToBmc = PostDataToBmcRun(callerGetAccessToken, id, name, description, urgency, incidentNo, log);
+            LogOutRun(callerGetAccessToken, log);
+
+            
                 
             string responseMessage = string.IsNullOrEmpty(name)
                 ? "This HTTP triggered function executed successfully. Pass a name in the query string or in the request body for a personalized response."
-                : $"Hello, {callerPostDataToBmc}. This HTTP triggered function executed successfully. {id}{coordGroup}{title}{category}{urgency}{status}{manGroup}";
+                : $"Hello, {name}. This HTTP triggered function executed successfully. {name} {urgency} {description} {id}";
 
             return new OkObjectResult(responseMessage);
         }
