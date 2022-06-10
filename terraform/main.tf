@@ -74,8 +74,9 @@ module "pagerduty-req-func" {
   app_service_plan_id         = azurerm_app_service_plan.wmsre-pagerduty-req-asp.id
   location                   = azurerm_resource_group.wmsre-pagerduty-req-rg.location
   app_settings = {
-  #   bmcQaPassword = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/bmc-qa-password/db8c2c874d094aa48c65588dc46d1cb9)"
-  #   bmcQaUsername = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/bmc-qa-username/a36651e28df84fdfb4b317be4af3c96c)"
+    pagerduty-service-account-password = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/pagerduty-service-account-password/6ddf97cf0f654739a5b66078b305682d)"
+    pagerduty-service-account = "@Microsoft.KeyVault(SecretUri=https://bmc-qa-kv.vault.azure.net/secrets/pagerduty-service-account/059e7d6a8321437c8d106b14d1d3635d)"
+    FUNCTIONS_EXTENSION_VERSION = "~4"
   }
 }
 
